@@ -97,4 +97,165 @@ function renderPastVacations() {
     pastVacationList.appendChild(vacationEl);
   });
 
+  pastVacationContainer.appendChild(pastVacationHeader);
+  pastVacationContainer.appendChild(pastVacationList);
 } //renderPastVacations
+
+function formatDate(dateString) {
+  //convert
+  const date = new Date(dateString);
+
+  //format the date into a locale specific string.
+  //include your locale for a better user experience
+  return date.toLocaleDateString("en-US",{timeZone: "UTC"});
+} //formatDate
+
+//start the app by rendering the past vacations on load, if any
+renderPastVacations();
+
+//register
+if ("serviceWork" in navigator) {
+  navigator.serviceWorker
+    .register("sw.js")
+    .then((registration) => {
+      console.log("Service worker registered with scope:", registration.scope);
+    })
+    .catch((error) => {
+      console.log("Service worker registered fail:", error);
+    });
+}
+
+// //listen for messages from the service worker
+// navigator.serviceWorker.addEventListener("message", (event) => {
+//   console.log("Recieved a message from service worker:", event.data);
+
+//   //handle different message types
+//   if (event.data.type === "update") {
+//     console.log("Update recieved:", event.data.data);
+//     //update your UI or perform some action
+//   }
+// });
+
+// //function to send a message to the service worker
+// function sendMessageToSW(message) {
+//   if (navigator.serviceWorker.controller) {
+//     navigator.serviceWorker.controller.postMessage(message);
+//   }
+// }
+
+// document.getElementById("sendButton").addEventListener("click", ()=>{
+//   sendMessageToSW({type: "action", data: "Button clicked"});
+// });
+
+//create a broadcast channel - name here needs to match the same in the sw
+const channel = new BroadcastChannel("pwa_channel");
+
+//listen for messages
+channel.onmessage = (event) => {
+  console.log("Recived message in PWA:", event.data);
+  document
+    .getElementById("messages")
+    .insertAdjacentHTML("beforeend", `<p>Received: ${event.data}</p>`);
+};
+
+//send a message when the button is clicked
+document.getElementById("sendButton").addEventListener("click", ()=>{
+  const message = "Hello from PWA!";
+  channel.postMessage(message);
+  console.log("Sent message from PWA:", message);
+});
+
+//open or create the database
+let db;
+const dbName = "SyncDatabase";
+const request = indexedDB.open(dbName, 1);
+
+request.onerror = function (event) {
+  console.error("Database error: " + event.target.error);
+};
+
+request.onsuccess = function (event) {
+  //now we actually have our db
+  db = event.target.result;
+  console.log("Database opened successfully");
+};
+
+request.onupgradeneeded = function (event) {
+  db = event.target.result;
+
+  //create any new object stores for our db or delete any old ones from a previous version
+  const objectStore = db.createObjectStore("pendingData",
+    {
+      keyPath: "id",
+      autoIncrement: true
+    }
+  );
+};
+
+//add data to our db, we need a transaction to accomplish it
+function addDataToIndexedDB(data) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(["pendingData"], "readWrite");
+    const objectStore = transaction.objectStore("pendingData");
+    const request = objectStore.add({data: data});
+
+    request.onsuccess = function (event) {
+      resolve();
+    };
+    request.onerror = function (event) {
+      reject("Error storing data: " +event.target.error);
+    }
+  }); //promise
+}
+
+//Handle form submission
+document.getElementById("dataForm").addEventListener("submit", function (event) {
+  event.preventDefault(); //don't send to server now
+
+  //get our data
+  const data = document.getElementById("dataInput").value;
+
+  //we need to check to see if both serviceWorker and the SyncManager avalible
+  if ("serviceWorker" in navigator && "SyncManager" in window) {
+    //we're good to add data into db for offline persistence
+    addDataToIndexedDB(data)
+      .then(()=> navigator.serviceWorker.ready) //wait for sw to be ready
+      .then((registration)=>{
+        //registers a sync event for when device comes online
+        return registration.sync.register("send-data");
+      })
+      .then(()=>{
+        //update the UI for successful registration
+        document.getElementById("status").textContent = "Sync registered. Data will be send when online.";
+      })
+      .catch((error) => {
+        console.error("Error: ", error);
+      });
+  } else {
+    //background sync isn't supported, try to send immediately
+    sendData(data)
+      .then((result)=>{
+        //update UI
+        document.getElementById("status").textContent = result;
+      })
+      .catch((error)=>{
+        //update UI
+        document.getElementById("status").textContent = error.message;
+      })
+  }
+}); //event listener
+
+//simulate sendinf data
+function sendData(data) {
+  console.log("Attempting to send data: ", data);
+
+  return new Promise((resolve, reject) => {
+    setTimeout(()=>{
+      if (Math.random() > 0.5) {
+        resolve("Data sent successfully");
+      } else {
+        rejext(new Error("Failed to send data"));
+      }
+    }, 1000);
+  })
+}
