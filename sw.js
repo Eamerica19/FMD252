@@ -5,11 +5,11 @@ const APP_STATIC_RESOURCES = [
     "index.html",
     "style.css",
     "app.js",
-    "vacationtracker.json",
+    "joketracker.json",
     "assets/icons/icon-512x512.png",
 ];
 
-const CACHE_NAME = `vacation-tracker-${VERSION}`;
+const CACHE_NAME = `joke-tracker-${VERSION}`;
 
 /* handle the install event and  retrieve and store the file listed for the
     cache */
@@ -86,68 +86,58 @@ self.addEventListener("fetch", (event)=>{
     ); //respond with
 }); //fetch
 
-// //send a message to the client - we will use to update data later
-// function sendMessageToPWA(message) {
-//     self.clients.matchAll().then((clients) => {
-//         clients.forEach(client => {
-//             client.postMessage(message);
-//         });
-//     });
-// }
-
-// //send a message every 10 seconds
-// setInterval(()=>{
-//     sendMessageToPWA({type: "update", data: "New update avalible"});
-// }, 10000);
-
-// //listen for messages from the app
-// self.addEventListener("message", (event)=>{
-//     console.log("Service worker recieved a message", event.data);
-
-//     //you can respond back if needed
-//     event.source.postMessage({
-//         type: "response",
-//         data: "Message recieved"
-//     })
-// })
-
 //create a broadcast channel - name here needs to match the same in the sw
 const channel = new BroadcastChannel("sw_channel");
 
 //listen for messages
 channel.onmessage = (event) => {
   console.log("Recived message in Service Worker:", event.data);
-  channel.postMessage("Service Worker received:" + event.data);
+  
+  if (event.data === "fetch-jokes") {
+    console.log("Fetching Jokes...")
+    fetchJokes();
+  }
 };
 
-//send a message when the button is clicked
-document.getElementById("sendButton").addEventListener("click", ()=>{
-  const message = "Hello from SW!";
-  channel.postMessage(message);
-  console.log("Sent message from SW:", message);
-});
+function fetchJokes() {
+    fetch("https://v2.jokeapi.dev/joke/Programming?blacklistFlags=nsfw,religious,political,racist,sexist,explicit&type=twopart&amount=5"
+    )
+    .then((response) => response.json() )
+    .then((data) => {
+        console.log("Got jokes:", data);
+        return addDataToIndexedDB(data);
+    })
+    .then(()=>{
+        //notify PWA that data's been updated
+        channel.postMessage("data-updated");
+    })
+    .catch((error)=>{
+        console.error("Error fetching jokes:", error);
+        //optionally notify the PWA about the error
+        channel.postMessage("fetch-error");
+    })
+} //fetchJokes
 
-//open or create the database
-let db;
-const dbName = "SyncDatabase";
-const request = indexedDB.open(dbName, 1); //name and version needs to match app.js
+function addDataToIndexedDB(data) {
+    return new Promise((resolve,reject) => {
+        //open or create the db
+        const request = indexedDB.open("JokesDatabase",1);
 
-request.onerror = function (event) {
-  console.error("Database error: " + event.target.error);
-};
+        request.onerror = (event) => {
+            reject("IndexedDB error: "+ event.targer.error);
+        };
 
-request.onsuccess = function (event) {
-  //now we actually have our db
-  db = event.target.result;
-  console.log("Database opened successfully in service worker");
-};
+        request.onsuccess = (event) => {
+            //create our transaction
 
-self.addEventListener("sync", function(event){
-  if(event.tag === "send-data") {
-    event.waitUntil(sendDataToServer());
-  }  
-})
+            //add each joke to the store
 
-function sendDataToServer() {
+            //finish the transaction
+        };
 
-} //sendDataToServer
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            db.createObjectStore("jokeData", { keyPath: "id" });
+        };
+    });
+} //add data to db

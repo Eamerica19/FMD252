@@ -1,173 +1,21 @@
-//create constants for the form and form controls
-const newVacationFormEl = document.getElementsByTagName("form")[0];
-const startDateInputEl = document.getElementById("start-date");
-const endDateInputEl = document.getElementById("end-date");
-const pastVacationContainer = document.getElementById("past-vacations");
-
-//listen to form submissions
-newVacationFormEl.addEventListener("submit", (event) => {
-  //prevent the form from submitting to the server
-  //since we're doing everything on the client side
-  event.preventDefault();
-
-  //get the dates from the form
-  const startDate = startDateInputEl.value;
-  const endDate = endDateInputEl.value;
-
-  //check if the dates are invalid
-  if (checkDatesInvalid(startDate, endDate)) {
-    return; //don't "submit" the form, just exit
-  }
-
-  //store the new vacation in our client-side storage
-  storeNewVacation(startDate, endDate);
-
-  //refresh the UI
-  renderPastVacations();
-
-  //reset the form
-  newVacationFormEl.reset();
-});
-
-function checkDatesInvalid(startDate, endDate) {
-  if (!startDate || !endDate || startDate > endDate) {
-    //should do error message, etc here
-    //we're just going to clear the form if anything is invalid
-    newVacationFormEl.reset();
-
-    return true; //something is invalid
-  } else {
-    return false; //everything is good
-  }
-}
-
-//add the storage key as an app-wide constant
-const STORAGE_KEY = "vaca_tracker";
-
-function storeNewVacation(startDate, endDate) {
-  //get data from storage
-  const vacations = getAllStoredVacations(); //returns an array of objects
-
-  //add the new vacation at the end of the array
-  vacations.push({ startDate, endDate });
-
-  //sort the array so newest to oldest vacations
-  vacations.sort((a, b) => {
-    return new Date(b.startDate) - new Date(a.startDate);
-  });
-
-  //store the new array back in storage
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(vacations));
-} //storeNewVaction
-
-
-function getAllStoredVacations() {
-  //get string of vacation from localStorage
-  const data = window.localStorage.getItem(STORAGE_KEY);
-
-  //if no vacations are stored, default to an empty array
-  //otherwise, return the stored data (JSON string) as parsed JSON
-  const vacations = data ? JSON.parse(data) : [];
-
-  return vacations;
-} //getAllStoredVacations
-
-function renderPastVacations() {
-  //get the parsed string of vacations or an empty array if there aren't any
-  const vacations = getAllStoredVacations();
-
-  //exit if there aren't any vacations
-  if (vacations.length === 0) {
-    return;
-  }
-
-  //clear the list of past vacations since we're gonna re-render it
-  pastVacationContainer.innerHTML = "";
-
-  const pastVacationHeader = document.createElement("h2");
-  pastVacationHeader.textContent = "Past Vacations";
-
-  const pastVacationList = document.createElement("ul");
-
-  //loop over all vacations and render them
-  vacations.forEach((vacation)=>{
-    const vacationEl = document.createElement("li");
-    vacationEl.textContent = `From ${formatDate(vacation.startDate)} 
-      to ${formatDate(vacation.endDate)}`;
-    pastVacationList.appendChild(vacationEl);
-  });
-
-  pastVacationContainer.appendChild(pastVacationHeader);
-  pastVacationContainer.appendChild(pastVacationList);
-} //renderPastVacations
-
-function formatDate(dateString) {
-  //convert
-  const date = new Date(dateString);
-
-  //format the date into a locale specific string.
-  //include your locale for a better user experience
-  return date.toLocaleDateString("en-US",{timeZone: "UTC"});
-} //formatDate
-
-//start the app by rendering the past vacations on load, if any
-renderPastVacations();
-
-//register
+//register the service worker
 if ("serviceWork" in navigator) {
-  navigator.serviceWorker
-    .register("sw.js")
-    .then((registration) => {
-      console.log("Service worker registered with scope:", registration.scope);
-    })
-    .catch((error) => {
-      console.log("Service worker registered fail:", error);
-    });
+    window.addEventListener("load",()=>{
+        navigator.serviceWorker
+        .register("sw.js")
+        .then((registration)=>{
+          console.log("Service worker registered with scope: ", registration.scope);
+        })
+        .catch((error)=>{
+          console.error("Service worker registration failed", error);
+        });
+    }); 
 }
 
-// //listen for messages from the service worker
-// navigator.serviceWorker.addEventListener("message", (event) => {
-//   console.log("Recieved a message from service worker:", event.data);
+const pastJokesContainer = document.getElementById("allJokes");
 
-//   //handle different message types
-//   if (event.data.type === "update") {
-//     console.log("Update recieved:", event.data.data);
-//     //update your UI or perform some action
-//   }
-// });
-
-// //function to send a message to the service worker
-// function sendMessageToSW(message) {
-//   if (navigator.serviceWorker.controller) {
-//     navigator.serviceWorker.controller.postMessage(message);
-//   }
-// }
-
-// document.getElementById("sendButton").addEventListener("click", ()=>{
-//   sendMessageToSW({type: "action", data: "Button clicked"});
-// });
-
-//create a broadcast channel - name here needs to match the same in the sw
-const channel = new BroadcastChannel("pwa_channel");
-
-//listen for messages
-channel.onmessage = (event) => {
-  console.log("Recived message in PWA:", event.data);
-  document
-    .getElementById("messages")
-    .insertAdjacentHTML("beforeend", `<p>Received: ${event.data}</p>`);
-};
-
-//send a message when the button is clicked
-document.getElementById("sendButton").addEventListener("click", ()=>{
-  const message = "Hello from PWA!";
-  channel.postMessage(message);
-  console.log("Sent message from PWA:", message);
-});
-
-//open or create the database
 let db;
-const dbName = "SyncDatabase";
+const dbName = "JokesDatabase";
 const request = indexedDB.open(dbName, 1);
 
 request.onerror = function (event) {
@@ -184,78 +32,140 @@ request.onupgradeneeded = function (event) {
   db = event.target.result;
 
   //create any new object stores for our db or delete any old ones from a previous version
-  const objectStore = db.createObjectStore("pendingData",
+  const objectStore = db.createObjectStore("pendingData", 
     {
       keyPath: "id",
       autoIncrement: true
-    }
-  );
+  });
+};
+  //create any new object stores for our db or delete any old ones from a previous version
+  const objectStore = db.createObjectStore("jokeData", 
+    {
+      keyPath: "id",
+  });
+
+//create a broadcast channel - name here needs to match the name in the sw
+const channel = new BroadcastChannel("jokes_channel");
+
+//listen for messages
+channel.onmessage = (event) => {
+  console.log("Received a message in PWA: ", event.data);
+  
+  if (event.data === "data-updated") {
+    //update the UI or perform other actions
+    console.log("Data Updated!");
+    renderPastJokes();
+  }
 };
 
-//add data to our db, we need a transaction to accomplish it
-function addDataToIndexedDB(data) {
+//refresh the UI
+renderPastJokes();
+
+//make sure the DOM is fully loaded before trying to access it
+document.addEventListener("DOMContentLoaded",()=>{
+  const sendButton = document.getElementById("sendButton");
+
+  if (sendButton) {
+    sendButton.addEventListener("click", requestJokes);
+  } else {
+    console.error("Button with ID 'sendButton' not found");
+  }
+});
+
+function getAllJokes() {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(["pendingData"], "readWrite");
-    const objectStore = transaction.objectStore("pendingData");
-    const request = objectStore.add({data: data});
+    const request = indexedDB.open(dbName);
+
+    request.onerror = (event) => {
+      reject(`Database error: ${event.target.error}`);
+    };
+    
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const transaction = db.transaction("jokeData", "readonly");
+      const objectStore = transaction.objectStore("jokeData");
+
+      const objects = [];
+      objectStore.openCursor().onsuccess = (event) => {
+        const cursor = event.target.result;
+
+        if (cursor) {
+          //add each object to our array
+          objects.push(cursor.value);
+          cursor.continue();
+        } else {
+          //no more objects to iterate, resolve the promise
+          resolve(objects);
+        }
+      };
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    };
+  });
+} //getAllJokes
+
+function renderPastJokes() {
+
+  getAllJokes()
+    .then((jokes)=>{
+
+      console.log("All objects: ", jokes);
+      if (jokes.length > 0) {
+        const jokeList = document.getElementById("allJokes");
+        //clear the list of past jokes since we're going to re-render it
+        jokeList.innerHTML = "";
+
+        const pastJokesHeader = document.createElement("h2");
+        pastJokesHeader.textContent = "Saved Jokes";
+
+        const pastJokesList = document.createElement("ul");
+        pastJokesList.id = "jokeList";
+
+        //loop over each joke and render it
+        jokes.forEach((joke)=>{
+          const jokeEl = document.createElement("li");
+          jokeEl.innerHTML = `<div>
+            <span class="title">Setup: </span>${joke.setup}<br />
+            <span class="title">Delivery: </span>${joke.delivery}
+          </div>`;
+
+          const deleteButton = document.createElement("button");
+          deleteButton.textContent = "Delete";
+          deleteButton.classList.add("delete-btn");
+          deleteButton.addEventListener("click", ()=>{
+            deleteJoke(joke.id);
+          });
+          jokeEl.appendChild(deleteButton);
+          pastJokesList.appendChild(jokeEl);
+        });
+        jokeList.appendChild(pastJokesHeader);
+        jokeList.appendChild(pastJokesList);
+      }
+
+    })
+    .catch((error)=>{
+      console.error("Error retrieving objects: ", error);
+    })
+
+}//renderPastJokes
+
+function deleteJoke(id) {
+    const transaction = db.transaction(["jokeData"], "readWrite");
+    const objectStore = transaction.objectStore("jokeData");
+    const request = objectStore.delete(id);
 
     request.onsuccess = function (event) {
-      resolve();
+        console.log("Joke was deleted successfully");
+        renderPastJokes();
     };
+
     request.onerror = function (event) {
-      reject("Error storing data: " +event.target.error);
-    }
-  }); //promise
+        console.log("Error deleting joke: "+ event.target.error);
+    };
 }
 
-//Handle form submission
-document.getElementById("dataForm").addEventListener("submit", function (event) {
-  event.preventDefault(); //don't send to server now
-
-  //get our data
-  const data = document.getElementById("dataInput").value;
-
-  //we need to check to see if both serviceWorker and the SyncManager avalible
-  if ("serviceWorker" in navigator && "SyncManager" in window) {
-    //we're good to add data into db for offline persistence
-    addDataToIndexedDB(data)
-      .then(()=> navigator.serviceWorker.ready) //wait for sw to be ready
-      .then((registration)=>{
-        //registers a sync event for when device comes online
-        return registration.sync.register("send-data");
-      })
-      .then(()=>{
-        //update the UI for successful registration
-        document.getElementById("status").textContent = "Sync registered. Data will be send when online.";
-      })
-      .catch((error) => {
-        console.error("Error: ", error);
-      });
-  } else {
-    //background sync isn't supported, try to send immediately
-    sendData(data)
-      .then((result)=>{
-        //update UI
-        document.getElementById("status").textContent = result;
-      })
-      .catch((error)=>{
-        //update UI
-        document.getElementById("status").textContent = error.message;
-      })
-  }
-}); //event listener
-
-//simulate sendinf data
-function sendData(data) {
-  console.log("Attempting to send data: ", data);
-
-  return new Promise((resolve, reject) => {
-    setTimeout(()=>{
-      if (Math.random() > 0.5) {
-        resolve("Data sent successfully");
-      } else {
-        rejext(new Error("Failed to send data"));
-      }
-    }, 1000);
-  })
+function requestJokes() {
+    channel.postMessage("fetch-jokes");
+    console.log("Requested jokes from service worker")
 }
